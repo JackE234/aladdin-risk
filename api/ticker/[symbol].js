@@ -1,12 +1,8 @@
 // api/ticker/[symbol].js
-// Vercel serverless function — replaces server.cjs
-// Deployed automatically at /api/ticker/AAPL, /api/ticker/BTC-USD etc.
-
 import https from "https";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-// Module-level crumb cache (persists across warm invocations)
 let _crumb = null;
 let _cookie = null;
 let _crumbExpiry = 0;
@@ -28,16 +24,14 @@ function readBody(res) {
 async function getCrumb() {
   if (_crumb && Date.now() < _crumbExpiry) return { crumb: _crumb, cookie: _cookie };
 
-  // Step 1: Hit the Yahoo Finance homepage to obtain a session cookie
   const homeRes = await httpsGet("https://finance.yahoo.com/", {
     headers: { "User-Agent": UA, "Accept-Language": "en-US,en;q=0.9" },
   });
-  homeRes.resume(); // drain response body
+  homeRes.resume();
 
   const rawCookies = homeRes.headers["set-cookie"] || [];
   const cookie = rawCookies.map((c) => c.split(";")[0]).join("; ");
 
-  // Step 2: Exchange that cookie for a crumb token
   const crumbRes = await httpsGet("https://query1.finance.yahoo.com/v1/test/getcrumb", {
     headers: { "User-Agent": UA, "Cookie": cookie },
   });
@@ -46,7 +40,7 @@ async function getCrumb() {
   if (crumb && crumb.length < 50) {
     _crumb = crumb;
     _cookie = cookie;
-    _crumbExpiry = Date.now() + 3600_000; // cache for 1 hour
+    _crumbExpiry = Date.now() + 3_600_000;
   }
 
   return { crumb: _crumb || "", cookie: _cookie || "" };
@@ -63,15 +57,13 @@ async function fetchYahooData(ticker) {
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
     `?interval=1d&period1=${startTime}&period2=${endTime}&includePrePost=false${crumbParam}`;
 
-  const options = {
+  const res = await httpsGet(url, {
     headers: {
       "User-Agent": UA,
       "Accept": "application/json",
       ...(cookie ? { "Cookie": cookie } : {}),
     },
-  };
-
-  const res = await httpsGet(url, options);
+  });
   const raw = await readBody(res);
 
   const parsed = JSON.parse(raw);
@@ -106,6 +98,13 @@ async function fetchYahooData(ticker) {
   const priceChange1Y = (currentPrice / prices[0] - 1) * 100;
   const sparkline = prices.slice(-30).map((p, i) => ({ i, p: +p.toFixed(2) }));
 
+  // Historical price series normalised to 1.0 at start (for backtest)
+  const histPrices = prices.slice(-252);
+  const priceHistory = histPrices.map(p => +(p / histPrices[0]).toFixed(6));
+
+  // Daily log returns for correlation matrix computation
+  const dailyReturns = logReturns.slice(-251);
+
   return {
     ticker: ticker.toUpperCase(),
     name: meta?.longName || meta?.shortName || ticker.toUpperCase(),
@@ -118,17 +117,17 @@ async function fetchYahooData(ticker) {
     priceChange1Y: +priceChange1Y.toFixed(2),
     dataPoints: prices.length,
     sparkline,
+    priceHistory,
+    dailyReturns,
   };
 }
 
 export default async function handler(req, res) {
-  // CORS headers — required for browser requests
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   const { symbol } = req.query;
-
   if (!symbol || symbol.length > 20) {
     return res.status(400).json({ error: "Invalid ticker" });
   }

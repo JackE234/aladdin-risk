@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, ScatterChart, Scatter } from "recharts";
 
-// ─── Monte Carlo ─────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const SCENARIOS = [
   { id: "base",       label: "Base Case",            icon: "◆", muShock: 0,     sigmaShock: 1.0, color: "#f59e0b" },
@@ -13,6 +13,9 @@ const SCENARIOS = [
 ];
 
 const ASSET_COLORS = ["#f59e0b","#34d399","#38bdf8","#a78bfa","#fb923c","#f87171","#fbbf24","#6ee7b7","#93c5fd","#c4b5fd"];
+const RISK_FREE_RATE = 0.045;
+
+// ─── Math helpers ─────────────────────────────────────────────────────────────
 
 function gaussianRandom() {
   let u = 0, v = 0;
@@ -21,29 +24,87 @@ function gaussianRandom() {
   return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
-const RISK_FREE_RATE = 0.045; // approximate 1Y US treasury yield
-// Assumed constant pairwise correlation for diversification benefit.
-// ρ=1 (old behaviour) overstates portfolio vol; 0.3 is a reasonable
-// conservative estimate for a mixed stock/bond/commodity portfolio.
-const ASSUMED_CORRELATION = 0.3;
+// Compute n×n correlation matrix from each asset's dailyReturns array
+function computeCorrelationMatrix(assets) {
+  const n = assets.length;
+  if (n < 2) return null;
+  const returns = assets.map(a => a.dailyReturns || []);
+  if (returns.some(r => r.length < 20)) return null;
 
-function runMonteCarlo(assets, scenario, nSims = 10000, nDays = 252) {
+  const minLen = Math.min(...returns.map(r => r.length));
+  const aligned = returns.map(r => r.slice(r.length - minLen));
+  const means = aligned.map(r => r.reduce((s, v) => s + v, 0) / minLen);
+
+  const cov = Array.from({ length: n }, () => Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = i; j < n; j++) {
+      let sum = 0;
+      for (let k = 0; k < minLen; k++) {
+        sum += (aligned[i][k] - means[i]) * (aligned[j][k] - means[j]);
+      }
+      cov[i][j] = cov[j][i] = sum / (minLen - 1);
+    }
+  }
+
+  const stds = cov.map((row, i) => Math.sqrt(Math.max(row[i], 1e-12)));
+  return cov.map((row, i) =>
+    row.map((v, j) => Math.max(-1, Math.min(1, v / (stds[i] * stds[j]))))
+  );
+}
+
+// Portfolio sigma using the full correlation matrix: σ_p = sqrt(w^T Σ w)
+function portfolioSigmaMatrix(weights, sigmas, corrMatrix) {
+  const n = weights.length;
+  let variance = 0;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      variance += weights[i] * weights[j] * sigmas[i] * sigmas[j] * corrMatrix[i][j];
+    }
+  }
+  return Math.sqrt(Math.max(0, variance));
+}
+
+// Efficient frontier via random Dirichlet sampling over the weight simplex
+function computeEfficientFrontier(assets, corrMatrix, nSims = 3000) {
+  if (assets.length < 2 || !corrMatrix) return [];
+  const n = assets.length;
+  const mus = assets.map(a => a.mu);
+  const sigmas = assets.map(a => a.sigma);
+
+  const points = [];
+  for (let s = 0; s < nSims; s++) {
+    const raw = Array.from({ length: n }, () => -Math.log(Math.random() + 1e-10));
+    const sum = raw.reduce((acc, v) => acc + v, 0);
+    const w = raw.map(v => v / sum);
+    const mu = w.reduce((acc, wi, i) => acc + wi * mus[i], 0);
+    const sigma = portfolioSigmaMatrix(w, sigmas, corrMatrix);
+    const sharpe = sigma > 0 ? (mu - RISK_FREE_RATE) / sigma : -Infinity;
+    points.push({ mu, sigma, sharpe, weights: w });
+  }
+  return points;
+}
+
+// ─── Monte Carlo ─────────────────────────────────────────────────────────────
+
+function runMonteCarlo(assets, scenario, corrMatrix, nSims = 10000, nDays = 252) {
   if (!assets.length) return null;
   const totalWeight = assets.reduce((s, a) => s + a.weight, 0);
   const norm = assets.map(a => ({ ...a, w: a.weight / totalWeight }));
-  const portfolioMu = norm.reduce((s, a) => s + a.w * (a.mu + scenario.muShock * Math.abs(a.mu / 0.1)), 0);
 
-  // Portfolio volatility using constant pairwise correlation assumption:
-  // σ_p² = ρ·(Σ wᵢσᵢ)² + (1−ρ)·Σ wᵢ²σᵢ²
-  const scaledSigmas = norm.map(a => a.w * a.sigma * scenario.sigmaShock);
-  const wSigmaSum  = scaledSigmas.reduce((s, v) => s + v, 0);
-  const wSigmaSumSq = scaledSigmas.reduce((s, v) => s + v * v, 0);
-  const portfolioSigma = Math.sqrt(
-    ASSUMED_CORRELATION * wSigmaSum * wSigmaSum +
-    (1 - ASSUMED_CORRELATION) * wSigmaSumSq
+  const portfolioMu = norm.reduce(
+    (s, a) => s + a.w * (a.mu + scenario.muShock * Math.abs(a.mu / 0.1)), 0
   );
 
-  // Daily drift and vol for GBM
+  const weights = norm.map(a => a.w);
+  const sigmas  = norm.map(a => a.sigma * scenario.sigmaShock);
+
+  const portfolioSigma = corrMatrix
+    ? portfolioSigmaMatrix(weights, sigmas, corrMatrix)
+    : Math.sqrt(
+        0.3 * Math.pow(sigmas.reduce((s, sig, i) => s + weights[i] * sig, 0), 2) +
+        0.7 * sigmas.reduce((s, sig, i) => s + weights[i] * weights[i] * sig * sig, 0)
+      );
+
   const dMu    = portfolioMu    / 252;
   const dSigma = portfolioSigma / Math.sqrt(252);
 
@@ -52,13 +113,9 @@ function runMonteCarlo(assets, scenario, nSims = 10000, nDays = 252) {
   const paths = [];
 
   for (let i = 0; i < nSims; i++) {
-    let val  = 1.0;
-    let peak = 1.0;
-    let maxDD = 0;
+    let val = 1.0, peak = 1.0, maxDD = 0;
     const path = i < 14 ? [1.0] : null;
     for (let d = 0; d < nDays; d++) {
-      // Correct GBM (log-normal): includes Itô correction −½σ²dt
-      // Prevents negative prices and removes upward bias of arithmetic form
       val *= Math.exp((dMu - 0.5 * dSigma * dSigma) + dSigma * gaussianRandom());
       if (val > peak) peak = val;
       const dd = (peak - val) / peak;
@@ -83,13 +140,13 @@ function runMonteCarlo(assets, scenario, nSims = 10000, nDays = 252) {
   const medianMaxDrawdown = maxDrawdowns[Math.floor(nSims * 0.5)];
   const sharpe = portfolioSigma > 0 ? (portfolioMu - RISK_FREE_RATE) / portfolioSigma : 0;
 
-  // histogram
   const bins = 40;
   const minV = finalValues[0] - 1, maxV = finalValues[finalValues.length - 1] - 1;
   const bSize = (maxV - minV) / bins;
   const hist = Array(bins).fill(0).map((_, i) => ({ x: minV + i * bSize + bSize / 2, count: 0 }));
   finalValues.forEach(v => { const idx = Math.min(Math.floor((v - 1 - minV) / bSize), bins - 1); hist[idx].count++; });
   const chartPaths = paths.map(p => { const s = []; for (let i = 0; i < p.length; i += 5) s.push(p[i]); return s; });
+
   return { var95, var99, cvar95, median, mean, p90, medianMaxDrawdown, sharpe, hist, chartPaths, portfolioMu, portfolioSigma };
 }
 
@@ -112,11 +169,129 @@ function Sparkline({ data }) {
   );
 }
 
+function CorrelationHeatmap({ assets, corrMatrix }) {
+  if (!corrMatrix || assets.length < 2) {
+    return (
+      <div style={{ color: "#484f58", fontSize: 12, padding: "40px 0", textAlign: "center" }}>
+        {assets.length < 2 ? "Add at least 2 assets to see correlations." : "Computing correlations…"}
+      </div>
+    );
+  }
+  const cellSize = Math.min(90, Math.floor(520 / assets.length));
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: "#484f58", marginBottom: 12, letterSpacing: "0.1em" }}>
+        PAIRWISE CORRELATION MATRIX · BASED ON 1-YEAR DAILY LOG RETURNS
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ width: cellSize }} />
+              {assets.map(a => (
+                <th key={a.id} style={{ width: cellSize, color: "#f59e0b", fontWeight: 600, fontSize: 10, padding: "4px 8px", textAlign: "center" }}>
+                  {a.ticker}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {assets.map((row, i) => (
+              <tr key={row.id}>
+                <td style={{ color: "#f59e0b", fontWeight: 600, fontSize: 10, padding: "4px 8px", whiteSpace: "nowrap" }}>{row.ticker}</td>
+                {assets.map((col, j) => {
+                  const r = corrMatrix[i][j];
+                  const bg = i === j
+                    ? "#21262d"
+                    : r > 0
+                      ? `rgba(245,158,11,${(r * 0.75).toFixed(2)})`
+                      : `rgba(248,113,113,${(Math.abs(r) * 0.75).toFixed(2)})`;
+                  const textColor = Math.abs(r) > 0.6 && i !== j ? "#000" : "#c9d1d9";
+                  return (
+                    <td key={col.id} style={{
+                      background: bg, textAlign: "center",
+                      padding: `${Math.round(cellSize * 0.3)}px ${Math.round(cellSize * 0.15)}px`,
+                      color: textColor, fontSize: 11,
+                      fontWeight: i === j ? 700 : 400,
+                      border: "1px solid #161b22",
+                    }}>
+                      {r.toFixed(2)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: "flex", gap: 24, marginTop: 12, fontSize: 10, color: "#8b949e" }}>
+        <span><span style={{ color: "#f59e0b" }}>■</span> Positive — assets move together</span>
+        <span><span style={{ color: "#f87171" }}>■</span> Negative — assets offset each other</span>
+        <span style={{ color: "#484f58" }}>■ Self (always 1.00)</span>
+      </div>
+    </div>
+  );
+}
+
+function EfficientFrontierChart({ frontier, currentSigma, currentMu, currentSharpe, assets }) {
+  if (!frontier || frontier.length === 0) {
+    return (
+      <div style={{ color: "#484f58", fontSize: 12, padding: "40px 0", textAlign: "center" }}>
+        Add at least 2 assets to compute the efficient frontier.
+      </div>
+    );
+  }
+
+  let maxSharpePoint = frontier[0];
+  for (const p of frontier) if (p.sharpe > maxSharpePoint.sharpe) maxSharpePoint = p;
+
+  const frontierData = frontier.map(p => ({ x: +(p.sigma * 100).toFixed(2), y: +(p.mu * 100).toFixed(2) }));
+  const currentPoint = [{ x: +(currentSigma * 100).toFixed(2), y: +(currentMu * 100).toFixed(2) }];
+  const optimalPoint = [{ x: +(maxSharpePoint.sigma * 100).toFixed(2), y: +(maxSharpePoint.mu * 100).toFixed(2) }];
+
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: "#484f58", marginBottom: 12, letterSpacing: "0.1em" }}>
+        EFFICIENT FRONTIER · 3,000 RANDOM WEIGHT COMBINATIONS · BASE CASE RETURNS
+      </div>
+      <ResponsiveContainer width="100%" height={300}>
+        <ScatterChart margin={{ top: 10, right: 30, bottom: 40, left: 20 }}>
+          <XAxis type="number" dataKey="x" name="Volatility" tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} label={{ value: "ANNUAL VOLATILITY", position: "insideBottom", offset: -20, fontSize: 9, fill: "#484f58" }} />
+          <YAxis type="number" dataKey="y" name="Return" tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} label={{ value: "ANNUAL RETURN", angle: -90, position: "insideLeft", offset: 10, fontSize: 9, fill: "#484f58" }} />
+          <Tooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 6, fontSize: 11 }} formatter={(v, name) => [v + "%", name]} />
+          <Scatter name="Portfolios" data={frontierData} fill="#f59e0b" opacity={0.2} r={2} />
+          <Scatter name="Current" data={currentPoint} fill="#38bdf8" opacity={1} r={7} />
+          <Scatter name="Max Sharpe" data={optimalPoint} fill="#34d399" opacity={1} r={7} />
+        </ScatterChart>
+      </ResponsiveContainer>
+      <div style={{ display: "flex", gap: 24, fontSize: 10, marginTop: 4, color: "#8b949e" }}>
+        <span><span style={{ color: "#38bdf8" }}>●</span> Current portfolio — Sharpe: {currentSharpe.toFixed(2)}</span>
+        <span><span style={{ color: "#34d399" }}>●</span> Max Sharpe — {maxSharpePoint.sharpe.toFixed(2)}</span>
+      </div>
+      <div style={{ marginTop: 14, background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: "12px 16px" }}>
+        <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 8 }}>OPTIMAL WEIGHTS (MAX SHARPE RATIO)</div>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          {assets.map((a, i) => (
+            <div key={a.id} style={{ fontSize: 11 }}>
+              <span style={{ color: "#f59e0b", fontWeight: 600 }}>{a.ticker}</span>
+              <span style={{ color: "#c9d1d9", marginLeft: 6 }}>{(maxSharpePoint.weights[i] * 100).toFixed(1)}%</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 10, color: "#8b949e", marginTop: 6 }}>
+          Return: <span style={{ color: "#34d399" }}>{fmt(maxSharpePoint.mu)}</span>
+          {" · "}Vol: <span style={{ color: "#f59e0b" }}>{fmt(maxSharpePoint.sigma)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TickerSearch({ onAdd, existingTickers }) {
-  const [query, setQuery]       = useState("");
+  const [query, setQuery]             = useState("");
   const [suggestions, setSuggestions] = useState([]);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState("");
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState("");
   const debounce = useRef(null);
 
   const search = (q) => {
@@ -184,16 +359,17 @@ function TickerSearch({ onAdd, existingTickers }) {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [assets, setAssets]     = useState([]);
-  const [scenario, setScenario] = useState(SCENARIOS[0]);
-  const [results, setResults]   = useState(null);
-  const [running, setRunning]   = useState(false);
-  const [activeTab, setActiveTab] = useState("paths");
+  const [assets, setAssets]         = useState([]);
+  const [scenario, setScenario]     = useState(SCENARIOS[0]);
+  const [results, setResults]       = useState(null);
+  const [corrMatrix, setCorrMatrix] = useState(null);
+  const [frontier, setFrontier]     = useState(null);
+  const [running, setRunning]       = useState(false);
+  const [activeTab, setActiveTab]   = useState("paths");
   const [fetchingInit, setFetchingInit] = useState(true);
-  const nextId = useRef(1);
-  const colorIdx = useRef(0);
+  const nextId    = useRef(1);
+  const colorIdx  = useRef(0);
 
-  // Load default portfolio on mount
   useEffect(() => {
     const defaults = ["SPY", "AGG", "GLD"];
     const weights  = [60, 30, 10];
@@ -218,6 +394,8 @@ export default function App() {
           currentPrice: d.currentPrice,
           priceChange1Y: d.priceChange1Y,
           sparkline: d.sparkline,
+          dailyReturns: d.dailyReturns || [],
+          priceHistory: d.priceHistory || [],
           live: true,
         })));
       }
@@ -237,6 +415,8 @@ export default function App() {
       currentPrice: data.currentPrice,
       priceChange1Y: data.priceChange1Y,
       sparkline: data.sparkline,
+      dailyReturns: data.dailyReturns || [],
+      priceHistory: data.priceHistory || [],
       live: true,
     }]);
   }, []);
@@ -245,7 +425,12 @@ export default function App() {
     if (!assets.length) return;
     setRunning(true);
     setTimeout(() => {
-      setResults(runMonteCarlo(assets, scenario));
+      const corr  = computeCorrelationMatrix(assets);
+      const front = computeEfficientFrontier(assets, corr);
+      const mc    = runMonteCarlo(assets, scenario, corr);
+      setCorrMatrix(corr);
+      setFrontier(front);
+      setResults(mc);
       setRunning(false);
     }, 50);
   }, [assets, scenario]);
@@ -262,6 +447,19 @@ export default function App() {
     return obj;
   }) || [];
 
+  const backtestData = (() => {
+    if (assets.length === 0 || assets.some(a => !a.priceHistory || a.priceHistory.length < 5)) return [];
+    const minLen = Math.min(...assets.map(a => a.priceHistory.length));
+    return Array.from({ length: minLen }, (_, dayIdx) => {
+      const obj = { day: dayIdx };
+      assets.forEach((a, i) => { obj[`asset_${i}`] = +((a.priceHistory[dayIdx] - 1) * 100).toFixed(2); });
+      obj.portfolio = +assets.reduce((s, a, _i) =>
+        s + (a.weight / totalWeight) * (a.priceHistory[dayIdx] - 1) * 100, 0
+      ).toFixed(2);
+      return obj;
+    });
+  })();
+
   return (
     <div style={{ fontFamily: "'IBM Plex Mono','Courier New',monospace", background: "#080c10", minHeight: "100vh", color: "#c9d1d9" }}>
       <style>{`
@@ -275,7 +473,7 @@ export default function App() {
         .run-btn{background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border:none;border-radius:6px;padding:10px 24px;font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:12px;cursor:pointer;letter-spacing:0.05em;transition:all 0.2s;}
         .run-btn:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(245,158,11,0.3);}
         .run-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
-        .tab-btn{background:none;border:none;border-bottom:2px solid transparent;padding:8px 16px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8b949e;cursor:pointer;transition:all 0.2s;}
+        .tab-btn{background:none;border:none;border-bottom:2px solid transparent;padding:8px 14px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8b949e;cursor:pointer;transition:all 0.2s;white-space:nowrap;}
         .tab-btn.active{color:#f59e0b;border-bottom-color:#f59e0b;}
         .tab-btn:hover{color:#c9d1d9;}
         .asset-row{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:10px 12px;transition:border-color 0.2s;margin-bottom:6px;}
@@ -326,13 +524,11 @@ export default function App() {
         {/* Left Panel */}
         <div style={{ borderRight: "1px solid #21262d", padding: "16px", background: "#080c10", overflowY: "auto" }}>
 
-          {/* Add asset */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 10, color: "#484f58", letterSpacing: "0.12em", marginBottom: 8 }}>ADD ASSET (LIVE DATA)</div>
             <TickerSearch onAdd={addAsset} existingTickers={assets.map(a => a.ticker)} />
           </div>
 
-          {/* Portfolio */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 10, color: "#484f58", letterSpacing: "0.12em", marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
               <span>PORTFOLIO</span>
@@ -379,7 +575,6 @@ export default function App() {
             })}
           </div>
 
-          {/* Scenarios */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 10, color: "#484f58", letterSpacing: "0.12em", marginBottom: 8 }}>STRESS TEST SCENARIO</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -407,13 +602,13 @@ export default function App() {
               {/* Metrics */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 10, marginBottom: 18 }}>
                 {[
-                  { label: "MEDIAN RETURN",   value: fmt(results.median),  color: results.median >= 0 ? "#34d399" : "#f87171", sub: "1-YEAR HORIZON" },
-                  { label: "MEAN RETURN",     value: fmt(results.mean),    color: results.mean   >= 0 ? "#34d399" : "#f87171", sub: "1-YEAR HORIZON" },
-                  { label: "VAR (95%)",       value: fmt(results.var95),   color: "#f87171",  sub: "1-YEAR HORIZON" },
-                  { label: "VAR (99%)",       value: fmt(results.var99),   color: "#ef4444",  sub: "1-YEAR HORIZON" },
-                  { label: "CVAR (95%)",      value: fmt(results.cvar95),  color: "#dc2626",  sub: "EXPECTED SHORTFALL" },
-                  { label: "SHARPE RATIO",    value: results.sharpe.toFixed(2), color: results.sharpe >= 1 ? "#34d399" : results.sharpe >= 0 ? "#f59e0b" : "#f87171", sub: "RF=4.5%" },
-                  { label: "MED MAX DRAWDOWN",value: fmt(-results.medianMaxDrawdown), color: "#f87171", sub: "MEDIAN SIMULATION" },
+                  { label: "MEDIAN RETURN",    value: fmt(results.median),  color: results.median >= 0 ? "#34d399" : "#f87171", sub: "1-YEAR HORIZON" },
+                  { label: "MEAN RETURN",      value: fmt(results.mean),    color: results.mean   >= 0 ? "#34d399" : "#f87171", sub: "1-YEAR HORIZON" },
+                  { label: "VAR (95%)",        value: fmt(results.var95),   color: "#f87171",  sub: "1-YEAR HORIZON" },
+                  { label: "VAR (99%)",        value: fmt(results.var99),   color: "#ef4444",  sub: "1-YEAR HORIZON" },
+                  { label: "CVAR (95%)",       value: fmt(results.cvar95),  color: "#dc2626",  sub: "EXPECTED SHORTFALL" },
+                  { label: "SHARPE RATIO",     value: results.sharpe.toFixed(2), color: results.sharpe >= 1 ? "#34d399" : results.sharpe >= 0 ? "#f59e0b" : "#f87171", sub: "RF=4.5%" },
+                  { label: "MED MAX DRAWDOWN", value: fmt(-results.medianMaxDrawdown), color: "#f87171", sub: "MEDIAN SIMULATION" },
                 ].map(m => (
                   <div key={m.label} className="metric-card">
                     <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 6 }}>{m.label}</div>
@@ -434,8 +629,15 @@ export default function App() {
               )}
 
               {/* Tabs */}
-              <div style={{ marginBottom: 16, borderBottom: "1px solid #21262d", display: "flex" }}>
-                {[["paths","SIMULATION PATHS"],["distribution","RETURN DISTRIBUTION"],["breakdown","ASSET BREAKDOWN"]].map(([t,l]) => (
+              <div style={{ marginBottom: 16, borderBottom: "1px solid #21262d", display: "flex", overflowX: "auto" }}>
+                {[
+                  ["paths",        "SIMULATION PATHS"],
+                  ["distribution", "DISTRIBUTION"],
+                  ["backtest",     "HISTORICAL BACKTEST"],
+                  ["breakdown",    "ASSET BREAKDOWN"],
+                  ["correlation",  "CORRELATIONS"],
+                  ["frontier",     "EFFICIENT FRONTIER"],
+                ].map(([t, l]) => (
                   <button key={t} className={`tab-btn ${activeTab === t ? "active" : ""}`} onClick={() => setActiveTab(t)}>{l}</button>
                 ))}
               </div>
@@ -450,7 +652,7 @@ export default function App() {
                       <Tooltip contentStyle={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 6, fontSize: 11 }} formatter={v => [v.toFixed(1) + "%"]} labelFormatter={v => `Day ${v}`} />
                       <ReferenceLine y={0} stroke="#30363d" strokeDasharray="4 4" />
                       {Array(14).fill(0).map((_, i) => (
-                        <Line key={i} type="monotone" dataKey={`p${i}`} dot={false} strokeWidth={1.2} stroke={`hsl(${i * 26}, 65%, 58%)`} opacity={0.6} />
+                        <Line key={i} type="monotone" dataKey={`p${i}`} dot={false} strokeWidth={1.2} stroke={`hsl(${i * 26}, 65%, 58%)`} opacity={0.6} connectNulls={false} />
                       ))}
                     </LineChart>
                   </ResponsiveContainer>
@@ -469,6 +671,38 @@ export default function App() {
                       <Bar dataKey="count" fill="#f59e0b" opacity={0.7} radius={[1, 1, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
+                </div>
+              )}
+
+              {activeTab === "backtest" && (
+                <div>
+                  <div style={{ height: 300 }}>
+                    <div style={{ fontSize: 10, color: "#484f58", marginBottom: 8 }}>HISTORICAL PERFORMANCE · PAST 12 MONTHS · CUMULATIVE RETURN (%)</div>
+                    {backtestData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={backtestData}>
+                          <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} label={{ value: "TRADING DAYS", position: "insideBottom", offset: -5, fontSize: 10, fill: "#484f58" }} />
+                          <YAxis tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} />
+                          <Tooltip contentStyle={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 6, fontSize: 11 }} formatter={v => [v.toFixed(1) + "%"]} labelFormatter={v => `Day ${v}`} />
+                          <ReferenceLine y={0} stroke="#30363d" strokeDasharray="4 4" />
+                          {assets.map((a, i) => (
+                            <Line key={a.id} type="monotone" dataKey={`asset_${i}`} dot={false} strokeWidth={1} stroke={a.color} opacity={0.5} name={a.ticker} />
+                          ))}
+                          <Line type="monotone" dataKey="portfolio" dot={false} strokeWidth={2.5} stroke="#f59e0b" name="Portfolio" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div style={{ color: "#484f58", fontSize: 12, padding: "40px 0", textAlign: "center" }}>Historical price data not available.</div>
+                    )}
+                  </div>
+                  {backtestData.length > 0 && (
+                    <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 10, fontSize: 10 }}>
+                      {assets.map((a, i) => (
+                        <span key={a.id} style={{ color: a.color }}>● {a.ticker}: {backtestData[backtestData.length - 1][`asset_${i}`] >= 0 ? "+" : ""}{backtestData[backtestData.length - 1][`asset_${i}`].toFixed(1)}%</span>
+                      ))}
+                      <span style={{ color: "#f59e0b", fontWeight: 600 }}>● Portfolio: {backtestData[backtestData.length - 1].portfolio >= 0 ? "+" : ""}{backtestData[backtestData.length - 1].portfolio.toFixed(1)}%</span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -504,6 +738,20 @@ export default function App() {
                     );
                   })}
                 </div>
+              )}
+
+              {activeTab === "correlation" && (
+                <CorrelationHeatmap assets={assets} corrMatrix={corrMatrix} />
+              )}
+
+              {activeTab === "frontier" && (
+                <EfficientFrontierChart
+                  frontier={frontier}
+                  currentSigma={results.portfolioSigma}
+                  currentMu={results.portfolioMu}
+                  currentSharpe={results.sharpe}
+                  assets={assets}
+                />
               )}
 
               {/* Insight strip */}
