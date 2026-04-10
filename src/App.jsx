@@ -659,10 +659,10 @@ export default function App() {
               </div>
 
               {activeTab === "paths" && (
-                <div style={{ height: 300 }}>
+                <div>
                   <div style={{ fontSize: 10, color: "#484f58", marginBottom: 2 }}>14 RANDOM SIMULATION PATHS · CUMULATIVE RETURN (%)</div>
                   <div style={{ fontSize: 10, color: "#30363d", marginBottom: 8 }}>Each line is one possible future for your portfolio. The spread shows how uncertain outcomes are — wide spread means higher risk.</div>
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height={280}>
                     <LineChart data={pathData}>
                       <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} label={{ value: "TRADING DAYS", position: "insideBottom", offset: -5, fontSize: 10, fill: "#484f58" }} />
                       <YAxis tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} />
@@ -677,10 +677,10 @@ export default function App() {
               )}
 
               {activeTab === "distribution" && (
-                <div style={{ height: 300 }}>
+                <div>
                   <div style={{ fontSize: 10, color: "#484f58", marginBottom: 2 }}>DISTRIBUTION OF 1-YEAR RETURNS · 10,000 SIMULATIONS</div>
                   <div style={{ fontSize: 10, color: "#30363d", marginBottom: 8 }}>The taller the bar, the more likely that return. The red line marks your VaR — losses to the left of it happen only 5% of the time.</div>
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height={280}>
                     <BarChart data={results.hist} barCategoryGap="0%">
                       <XAxis dataKey="x" tick={{ fontSize: 9, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => (v * 100).toFixed(0) + "%"} interval={4} />
                       <YAxis tick={{ fontSize: 9, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} />
@@ -694,26 +694,24 @@ export default function App() {
 
               {activeTab === "backtest" && (
                 <div>
-                  <div style={{ height: 300 }}>
-                    <div style={{ fontSize: 10, color: "#484f58", marginBottom: 2 }}>HISTORICAL PERFORMANCE · PAST 12 MONTHS · CUMULATIVE RETURN (%)</div>
-                    <div style={{ fontSize: 10, color: "#30363d", marginBottom: 8 }}>How your portfolio actually performed over the last year. The gold line is the blended portfolio — coloured lines show each individual asset.</div>
-                    {backtestData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={backtestData}>
-                          <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} label={{ value: "TRADING DAYS", position: "insideBottom", offset: -5, fontSize: 10, fill: "#484f58" }} />
-                          <YAxis tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} />
-                          <Tooltip contentStyle={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 6, fontSize: 11 }} formatter={v => [v.toFixed(1) + "%"]} labelFormatter={v => `Day ${v}`} />
-                          <ReferenceLine y={0} stroke="#30363d" strokeDasharray="4 4" />
-                          {assets.map((a, i) => (
-                            <Line key={a.id} type="monotone" dataKey={`asset_${i}`} dot={false} strokeWidth={1} stroke={a.color} opacity={0.5} name={a.ticker} />
-                          ))}
-                          <Line type="monotone" dataKey="portfolio" dot={false} strokeWidth={2.5} stroke="#f59e0b" name="Portfolio" />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div style={{ color: "#484f58", fontSize: 12, padding: "40px 0", textAlign: "center" }}>Historical price data not available.</div>
-                    )}
-                  </div>
+                  <div style={{ fontSize: 10, color: "#484f58", marginBottom: 2 }}>HISTORICAL PERFORMANCE · PAST 12 MONTHS · CUMULATIVE RETURN (%)</div>
+                  <div style={{ fontSize: 10, color: "#30363d", marginBottom: 8 }}>How your portfolio actually performed over the last year. The gold line is the blended portfolio — coloured lines show each individual asset.</div>
+                  {backtestData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={280}>
+                      <LineChart data={backtestData}>
+                        <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} label={{ value: "TRADING DAYS", position: "insideBottom", offset: -5, fontSize: 10, fill: "#484f58" }} />
+                        <YAxis tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} />
+                        <Tooltip contentStyle={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 6, fontSize: 11 }} formatter={v => [v.toFixed(1) + "%"]} labelFormatter={v => `Day ${v}`} />
+                        <ReferenceLine y={0} stroke="#30363d" strokeDasharray="4 4" />
+                        {assets.map((a, i) => (
+                          <Line key={a.id} type="monotone" dataKey={`asset_${i}`} dot={false} strokeWidth={1} stroke={a.color} opacity={0.5} name={a.ticker} />
+                        ))}
+                        <Line type="monotone" dataKey="portfolio" dot={false} strokeWidth={2.5} stroke="#f59e0b" name="Portfolio" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div style={{ color: "#484f58", fontSize: 12, padding: "40px 0", textAlign: "center" }}>Historical price data not available.</div>
+                  )}
                   {backtestData.length > 0 && (
                     <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 10, fontSize: 10 }}>
                       {assets.map((a, i) => (
