@@ -259,9 +259,9 @@ function EfficientFrontierChart({ frontier, currentSigma, currentMu, currentShar
           <XAxis type="number" dataKey="x" name="Volatility" tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} label={{ value: "ANNUAL VOLATILITY", position: "insideBottom", offset: -20, fontSize: 9, fill: "#484f58" }} />
           <YAxis type="number" dataKey="y" name="Return" tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} label={{ value: "ANNUAL RETURN", angle: -90, position: "insideLeft", offset: 10, fontSize: 9, fill: "#484f58" }} />
           <Tooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 6, fontSize: 11 }} formatter={(v, name) => [v + "%", name]} />
-          <Scatter name="Portfolios" data={frontierData} fill="#f59e0b" opacity={0.2} r={2} />
-          <Scatter name="Current" data={currentPoint} fill="#38bdf8" opacity={1} r={7} />
-          <Scatter name="Max Sharpe" data={optimalPoint} fill="#34d399" opacity={1} r={7} />
+          <Scatter name="Portfolios" data={frontierData} shape={(p) => <circle cx={p.cx} cy={p.cy} r={2} fill="#f59e0b" opacity={0.25} />} />
+          <Scatter name="Current" data={currentPoint} shape={(p) => <circle cx={p.cx} cy={p.cy} r={8} fill="#38bdf8" opacity={1} />} />
+          <Scatter name="Max Sharpe" data={optimalPoint} shape={(p) => <circle cx={p.cx} cy={p.cy} r={8} fill="#34d399" opacity={1} />} />
         </ScatterChart>
       </ResponsiveContainer>
       <div style={{ display: "flex", gap: 24, fontSize: 10, marginTop: 4, color: "#8b949e" }}>
