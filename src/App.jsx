@@ -233,6 +233,21 @@ function CorrelationHeatmap({ assets, corrMatrix }) {
   );
 }
 
+function FrontierTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0]?.payload;
+  if (!d) return null;
+  const labelColor = d.label === "Current" ? "#38bdf8" : d.label === "Max Sharpe" ? "#34d399" : "#f59e0b";
+  return (
+    <div style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 6, padding: "10px 14px", fontSize: 11, fontFamily: "'IBM Plex Mono'", color: "#c9d1d9" }}>
+      <div style={{ color: labelColor, fontWeight: 600, fontSize: 10, marginBottom: 6 }}>{d.label?.toUpperCase()}</div>
+      <div>Vol: <span style={{ color: "#f59e0b" }}>{d.x?.toFixed(1)}%</span></div>
+      <div>Return: <span style={{ color: d.y >= 0 ? "#34d399" : "#f87171" }}>{d.y >= 0 ? "+" : ""}{d.y?.toFixed(1)}%</span></div>
+      <div>Sharpe: <span style={{ color: d.sharpe >= 1 ? "#34d399" : d.sharpe >= 0 ? "#f59e0b" : "#f87171" }}>{d.sharpe?.toFixed(2)}</span></div>
+    </div>
+  );
+}
+
 function EfficientFrontierChart({ frontier, currentSigma, currentMu, currentSharpe, assets }) {
   if (!frontier || frontier.length === 0) {
     return (
@@ -245,9 +260,9 @@ function EfficientFrontierChart({ frontier, currentSigma, currentMu, currentShar
   let maxSharpePoint = frontier[0];
   for (const p of frontier) if (p.sharpe > maxSharpePoint.sharpe) maxSharpePoint = p;
 
-  const frontierData = frontier.map(p => ({ x: +(p.sigma * 100).toFixed(2), y: +(p.mu * 100).toFixed(2) }));
-  const currentPoint = [{ x: +(currentSigma * 100).toFixed(2), y: +(currentMu * 100).toFixed(2) }];
-  const optimalPoint = [{ x: +(maxSharpePoint.sigma * 100).toFixed(2), y: +(maxSharpePoint.mu * 100).toFixed(2) }];
+  const frontierData = frontier.map(p => ({ x: +(p.sigma * 100).toFixed(2), y: +(p.mu * 100).toFixed(2), sharpe: +p.sharpe.toFixed(2), label: "Portfolio" }));
+  const currentPoint = [{ x: +(currentSigma * 100).toFixed(2), y: +(currentMu * 100).toFixed(2), sharpe: +currentSharpe.toFixed(2), label: "Current" }];
+  const optimalPoint = [{ x: +(maxSharpePoint.sigma * 100).toFixed(2), y: +(maxSharpePoint.mu * 100).toFixed(2), sharpe: +maxSharpePoint.sharpe.toFixed(2), label: "Max Sharpe" }];
 
   return (
     <div>
@@ -258,7 +273,7 @@ function EfficientFrontierChart({ frontier, currentSigma, currentMu, currentShar
         <ScatterChart margin={{ top: 10, right: 30, bottom: 40, left: 20 }}>
           <XAxis type="number" dataKey="x" name="Volatility" tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} label={{ value: "ANNUAL VOLATILITY", position: "insideBottom", offset: -20, fontSize: 9, fill: "#484f58" }} />
           <YAxis type="number" dataKey="y" name="Return" tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} label={{ value: "ANNUAL RETURN", angle: -90, position: "insideLeft", offset: 10, fontSize: 9, fill: "#484f58" }} />
-          <Tooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 6, fontSize: 11 }} formatter={(v, name) => [v + "%", name]} />
+          <Tooltip cursor={{ strokeDasharray: "3 3" }} content={FrontierTooltip} wrapperStyle={{ outline: "none" }} />
           <Scatter name="Portfolios" data={frontierData} shape={(p) => <circle cx={p.cx} cy={p.cy} r={2} fill="#f59e0b" opacity={0.25} />} />
           <Scatter name="Current" data={currentPoint} shape={(p) => <circle cx={p.cx} cy={p.cy} r={8} fill="#38bdf8" opacity={1} />} />
           <Scatter name="Max Sharpe" data={optimalPoint} shape={(p) => <circle cx={p.cx} cy={p.cy} r={8} fill="#34d399" opacity={1} />} />
