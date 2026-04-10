@@ -271,8 +271,8 @@ function EfficientFrontierChart({ frontier, currentSigma, currentMu, currentShar
       </div>
       <ResponsiveContainer width="100%" height={300}>
         <ScatterChart margin={{ top: 10, right: 30, bottom: 40, left: 20 }}>
-          <XAxis type="number" dataKey="x" name="Volatility" tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} label={{ value: "ANNUAL VOLATILITY", position: "insideBottom", offset: -20, fontSize: 9, fill: "#484f58" }} />
-          <YAxis type="number" dataKey="y" name="Return" tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} label={{ value: "ANNUAL RETURN", angle: -90, position: "insideLeft", offset: 10, fontSize: 9, fill: "#484f58" }} />
+          <XAxis type="number" dataKey="x" name="Volatility" tick={{ fontSize: 10, fill: "#ffffff" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} label={{ value: "ANNUAL VOLATILITY", position: "insideBottom", offset: -20, fontSize: 9, fill: "#484f58" }} />
+          <YAxis type="number" dataKey="y" name="Return" tick={{ fontSize: 10, fill: "#ffffff" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => v + "%"} label={{ value: "ANNUAL RETURN", angle: -90, position: "insideLeft", offset: 10, fontSize: 9, fill: "#484f58" }} />
           <Tooltip cursor={{ strokeDasharray: "3 3" }} content={FrontierTooltip} wrapperStyle={{ outline: "none" }} />
           <Scatter name="Portfolios" data={frontierData} shape={(p) => <circle cx={p.cx} cy={p.cy} r={2} fill="#f59e0b" opacity={0.25} />} />
           <Scatter name="Current" data={currentPoint} shape={(p) => <circle cx={p.cx} cy={p.cy} r={8} fill="#38bdf8" opacity={1} />} />
