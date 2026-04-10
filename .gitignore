@@ -22,7 +22,27 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-node_modules
-.DS_Store
-node_modules
-.DS_Store
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+.env.*.local
+
+# Secrets & credentials
+*.key
+*.pem
+*.cer
+*.crt
+*.p12
+*.pfx
+secrets.json
+credentials.json
+serviceAccountKey.json
+
+# Cloud provider credentials
+.aws/
+.gcp/
+.azure/

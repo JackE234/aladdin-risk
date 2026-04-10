@@ -1,16 +1,51 @@
-# React + Vite
+# ALADDIN — Risk Simulator
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A portfolio risk simulator inspired by BlackRock's Aladdin platform. Built with React and deployed on Vercel with serverless API routes.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Live market data** — fetches real price history from Yahoo Finance (stocks, ETFs, crypto, indices)
+- **Monte Carlo simulation** — 10,000 paths using correct log-normal GBM with Itô correction
+- **Stress testing** — 6 scenarios: Base Case, Fed Rate Hike, Geopolitical Crisis, Global Recession, Inflation Surge, Market Crash
+- **Risk metrics** — VaR (95%/99%), CVaR, Sharpe Ratio, Median Max Drawdown, Mean/Median return
+- **Portfolio breakdown** — per-asset risk contribution with scenario-adjusted return and volatility
+- **Return distribution** — histogram of simulated 1-year outcomes with VaR reference line
+- **Simulation paths** — 14 random GBM paths visualised over the 252-day horizon
 
-## React Compiler
+## Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Frontend** — React, Recharts, IBM Plex Mono
+- **Backend** — Vercel serverless functions (Node.js)
+- **Data** — Yahoo Finance public API
+- **Deployment** — Vercel
 
-## Expanding the ESLint configuration
+## Local Development
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm install
+npm run dev
+```
+
+The API routes in `/api` require a Vercel-compatible environment. Use the Vercel CLI for full local support:
+
+```bash
+npm i -g vercel
+vercel dev
+```
+
+## How It Works
+
+1. Add any ticker (stocks, ETFs, crypto) to your portfolio
+2. Set portfolio weights
+3. Choose a stress scenario
+4. Run the simulation — 10,000 Monte Carlo paths are computed in-browser
+5. Review VaR, CVaR, Sharpe, and drawdown metrics
+
+Portfolio volatility is calculated using a constant pairwise correlation assumption (ρ=0.3) to account for diversification benefit rather than assuming perfect correlation between assets.
+
+## API Routes
+
+| Route | Description |
+|-------|-------------|
+| `GET /api/ticker/[symbol]` | Fetches 1Y price history, annualised return, and volatility for a given ticker |
+| `GET /api/search?q=` | Searches tickers by name or symbol |

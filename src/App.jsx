@@ -21,34 +21,68 @@ function gaussianRandom() {
   return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
-function runMonteCarlo(assets, scenario, nSims = 2000, nDays = 252) {
+const RISK_FREE_RATE = 0.045; // approximate 1Y US treasury yield
+// Assumed constant pairwise correlation for diversification benefit.
+// ρ=1 (old behaviour) overstates portfolio vol; 0.3 is a reasonable
+// conservative estimate for a mixed stock/bond/commodity portfolio.
+const ASSUMED_CORRELATION = 0.3;
+
+function runMonteCarlo(assets, scenario, nSims = 10000, nDays = 252) {
   if (!assets.length) return null;
   const totalWeight = assets.reduce((s, a) => s + a.weight, 0);
   const norm = assets.map(a => ({ ...a, w: a.weight / totalWeight }));
-  const portfolioMu    = norm.reduce((s, a) => s + a.w * (a.mu    + scenario.muShock    * Math.abs(a.mu / 0.1)), 0);
-  const portfolioSigma = norm.reduce((s, a) => s + a.w *  a.sigma * scenario.sigmaShock, 0);
+  const portfolioMu = norm.reduce((s, a) => s + a.w * (a.mu + scenario.muShock * Math.abs(a.mu / 0.1)), 0);
+
+  // Portfolio volatility using constant pairwise correlation assumption:
+  // σ_p² = ρ·(Σ wᵢσᵢ)² + (1−ρ)·Σ wᵢ²σᵢ²
+  const scaledSigmas = norm.map(a => a.w * a.sigma * scenario.sigmaShock);
+  const wSigmaSum  = scaledSigmas.reduce((s, v) => s + v, 0);
+  const wSigmaSumSq = scaledSigmas.reduce((s, v) => s + v * v, 0);
+  const portfolioSigma = Math.sqrt(
+    ASSUMED_CORRELATION * wSigmaSum * wSigmaSum +
+    (1 - ASSUMED_CORRELATION) * wSigmaSumSq
+  );
+
+  // Daily drift and vol for GBM
   const dMu    = portfolioMu    / 252;
   const dSigma = portfolioSigma / Math.sqrt(252);
-  const finalValues = [];
+
+  const finalValues  = [];
+  const maxDrawdowns = [];
   const paths = [];
+
   for (let i = 0; i < nSims; i++) {
-    let val = 1.0;
+    let val  = 1.0;
+    let peak = 1.0;
+    let maxDD = 0;
     const path = i < 14 ? [1.0] : null;
     for (let d = 0; d < nDays; d++) {
-      val *= (1 + dMu + dSigma * gaussianRandom());
+      // Correct GBM (log-normal): includes Itô correction −½σ²dt
+      // Prevents negative prices and removes upward bias of arithmetic form
+      val *= Math.exp((dMu - 0.5 * dSigma * dSigma) + dSigma * gaussianRandom());
+      if (val > peak) peak = val;
+      const dd = (peak - val) / peak;
+      if (dd > maxDD) maxDD = dd;
       if (path) path.push(val);
     }
     finalValues.push(val);
+    maxDrawdowns.push(maxDD);
     if (path) paths.push(path);
   }
+
   finalValues.sort((a, b) => a - b);
+  maxDrawdowns.sort((a, b) => a - b);
+
   const pct = (p) => finalValues[Math.floor(nSims * p)] - 1;
-  const var95   = pct(0.05);
-  const var99   = pct(0.01);
-  const cvar95  = finalValues.slice(0, Math.floor(nSims * 0.05)).reduce((s, v) => s + v - 1, 0) / Math.floor(nSims * 0.05);
-  const median  = pct(0.5);
-  const mean    = finalValues.reduce((s, v) => s + v, 0) / nSims - 1;
-  const p90     = pct(0.9);
+  const var95  = pct(0.05);
+  const var99  = pct(0.01);
+  const cvar95 = finalValues.slice(0, Math.floor(nSims * 0.05)).reduce((s, v) => s + v - 1, 0) / Math.floor(nSims * 0.05);
+  const median = pct(0.5);
+  const mean   = finalValues.reduce((s, v) => s + v, 0) / nSims - 1;
+  const p90    = pct(0.9);
+  const medianMaxDrawdown = maxDrawdowns[Math.floor(nSims * 0.5)];
+  const sharpe = portfolioSigma > 0 ? (portfolioMu - RISK_FREE_RATE) / portfolioSigma : 0;
+
   // histogram
   const bins = 40;
   const minV = finalValues[0] - 1, maxV = finalValues[finalValues.length - 1] - 1;
@@ -56,7 +90,7 @@ function runMonteCarlo(assets, scenario, nSims = 2000, nDays = 252) {
   const hist = Array(bins).fill(0).map((_, i) => ({ x: minV + i * bSize + bSize / 2, count: 0 }));
   finalValues.forEach(v => { const idx = Math.min(Math.floor((v - 1 - minV) / bSize), bins - 1); hist[idx].count++; });
   const chartPaths = paths.map(p => { const s = []; for (let i = 0; i < p.length; i += 5) s.push(p[i]); return s; });
-  return { var95, var99, cvar95, median, mean, p90, hist, chartPaths, portfolioMu, portfolioSigma };
+  return { var95, var99, cvar95, median, mean, p90, medianMaxDrawdown, sharpe, hist, chartPaths, portfolioMu, portfolioSigma };
 }
 
 const fmt = (n, d = 1) => ((n >= 0 ? "+" : "") + (n * 100).toFixed(d) + "%");
@@ -278,7 +312,7 @@ export default function App() {
             <span className="live-dot" />
             <span style={{ color: "#34d399", fontSize: 10 }}>LIVE DATA</span>
           </div>
-          {[["SIMULATIONS","2,000"],["HORIZON","252D"],["SOURCE","YAHOO FINANCE"]].map(([l,v]) => (
+          {[["SIMULATIONS","10,000"],["HORIZON","252D"],["SOURCE","YAHOO FINANCE"]].map(([l,v]) => (
             <div key={l} style={{ textAlign: "right" }}>
               <div style={{ color: "#484f58", fontSize: 9 }}>{l}</div>
               <div style={{ color: "#f59e0b", fontWeight: 600, fontSize: 11 }}>{v}</div>
@@ -371,18 +405,20 @@ export default function App() {
           {results ? (
             <div className="fade-in">
               {/* Metrics */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 10, marginBottom: 18 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 10, marginBottom: 18 }}>
                 {[
-                  { label: "MEDIAN RETURN",  value: fmt(results.median),  color: results.median >= 0 ? "#34d399" : "#f87171" },
-                  { label: "MEAN RETURN",    value: fmt(results.mean),    color: results.mean   >= 0 ? "#34d399" : "#f87171" },
-                  { label: "VAR (95%)",      value: fmt(results.var95),   color: "#f87171" },
-                  { label: "VAR (99%)",      value: fmt(results.var99),   color: "#ef4444" },
-                  { label: "CVAR (95%)",     value: fmt(results.cvar95),  color: "#dc2626" },
+                  { label: "MEDIAN RETURN",   value: fmt(results.median),  color: results.median >= 0 ? "#34d399" : "#f87171", sub: "1-YEAR HORIZON" },
+                  { label: "MEAN RETURN",     value: fmt(results.mean),    color: results.mean   >= 0 ? "#34d399" : "#f87171", sub: "1-YEAR HORIZON" },
+                  { label: "VAR (95%)",       value: fmt(results.var95),   color: "#f87171",  sub: "1-YEAR HORIZON" },
+                  { label: "VAR (99%)",       value: fmt(results.var99),   color: "#ef4444",  sub: "1-YEAR HORIZON" },
+                  { label: "CVAR (95%)",      value: fmt(results.cvar95),  color: "#dc2626",  sub: "EXPECTED SHORTFALL" },
+                  { label: "SHARPE RATIO",    value: results.sharpe.toFixed(2), color: results.sharpe >= 1 ? "#34d399" : results.sharpe >= 0 ? "#f59e0b" : "#f87171", sub: "RF=4.5%" },
+                  { label: "MED MAX DRAWDOWN",value: fmt(-results.medianMaxDrawdown), color: "#f87171", sub: "MEDIAN SIMULATION" },
                 ].map(m => (
                   <div key={m.label} className="metric-card">
                     <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 6 }}>{m.label}</div>
-                    <div style={{ fontSize: 20, fontWeight: 600, color: m.color, fontFamily: "'IBM Plex Mono'", textShadow: `0 0 20px ${m.color}55` }}>{m.value}</div>
-                    <div style={{ fontSize: 9, color: "#30363d", marginTop: 2 }}>1-YEAR HORIZON</div>
+                    <div style={{ fontSize: 18, fontWeight: 600, color: m.color, fontFamily: "'IBM Plex Mono'", textShadow: `0 0 20px ${m.color}55` }}>{m.value}</div>
+                    <div style={{ fontSize: 9, color: "#30363d", marginTop: 2 }}>{m.sub}</div>
                   </div>
                 ))}
               </div>
@@ -423,7 +459,7 @@ export default function App() {
 
               {activeTab === "distribution" && (
                 <div style={{ height: 300 }}>
-                  <div style={{ fontSize: 10, color: "#484f58", marginBottom: 8 }}>DISTRIBUTION OF 1-YEAR RETURNS · 2,000 SIMULATIONS</div>
+                  <div style={{ fontSize: 10, color: "#484f58", marginBottom: 8 }}>DISTRIBUTION OF 1-YEAR RETURNS · 10,000 SIMULATIONS</div>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={results.hist} barCategoryGap="0%">
                       <XAxis dataKey="x" tick={{ fontSize: 9, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => (v * 100).toFixed(0) + "%"} interval={4} />
@@ -471,7 +507,7 @@ export default function App() {
               )}
 
               {/* Insight strip */}
-              <div style={{ marginTop: 18, background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: "14px 18px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+              <div style={{ marginTop: 18, background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: "14px 18px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16 }}>
                 <div>
                   <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 4 }}>INTERPRETATION</div>
                   <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.5 }}>
@@ -488,6 +524,12 @@ export default function App() {
                   <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 4 }}>UPSIDE (90TH PCT)</div>
                   <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.5 }}>
                     Top 10% of outcomes yield <span style={{ color: "#34d399", fontWeight: 600 }}>+{(results.p90 * 100).toFixed(1)}%</span> or better. Median: <span style={{ color: "#34d399", fontWeight: 600 }}>{fmt(results.median)}</span>.
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 4 }}>MAX DRAWDOWN</div>
+                  <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.5 }}>
+                    The median simulation experiences a peak-to-trough drawdown of <span style={{ color: "#f87171", fontWeight: 600 }}>{(results.medianMaxDrawdown * 100).toFixed(1)}%</span> over the year.
                   </div>
                 </div>
               </div>
