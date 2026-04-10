@@ -4,12 +4,12 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContai
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SCENARIOS = [
-  { id: "base",       label: "Base Case",            icon: "◆", muShock: 0,     sigmaShock: 1.0, color: "#f59e0b" },
-  { id: "rate_hike",  label: "Fed Rate Hike +300bps", icon: "↑", muShock: -0.08, sigmaShock: 1.4, color: "#fb923c" },
-  { id: "geo_crisis", label: "Geopolitical Crisis",   icon: "⚠", muShock: -0.15, sigmaShock: 2.0, color: "#f87171" },
-  { id: "recession",  label: "Global Recession",      icon: "▼", muShock: -0.25, sigmaShock: 2.5, color: "#ef4444" },
-  { id: "inflation",  label: "Inflation Surge",       icon: "🔥", muShock: -0.06, sigmaShock: 1.3, color: "#fbbf24" },
-  { id: "crash",      label: "Market Crash −40%",     icon: "💥", muShock: -0.40, sigmaShock: 3.0, color: "#dc2626" },
+  { id: "base",       label: "Base Case",            icon: "◆", muShock: 0,     sigmaShock: 1.0, color: "#f59e0b", desc: "Normal market conditions. No major shocks." },
+  { id: "rate_hike",  label: "Fed Rate Hike +300bps", icon: "↑", muShock: -0.08, sigmaShock: 1.4, color: "#fb923c", desc: "Central banks raise rates sharply — bad for bonds, slows growth." },
+  { id: "geo_crisis", label: "Geopolitical Crisis",   icon: "⚠", muShock: -0.15, sigmaShock: 2.0, color: "#f87171", desc: "War, sanctions, or major political instability rattles markets." },
+  { id: "recession",  label: "Global Recession",      icon: "▼", muShock: -0.25, sigmaShock: 2.5, color: "#ef4444", desc: "Prolonged economic downturn. Growth falls, unemployment rises." },
+  { id: "inflation",  label: "Inflation Surge",       icon: "🔥", muShock: -0.06, sigmaShock: 1.3, color: "#fbbf24", desc: "Prices rise faster than expected, eroding purchasing power." },
+  { id: "crash",      label: "Market Crash −40%",     icon: "💥", muShock: -0.40, sigmaShock: 3.0, color: "#dc2626", desc: "A sudden severe collapse — think 2008 financial crisis." },
 ];
 
 const ASSET_COLORS = ["#f59e0b","#34d399","#38bdf8","#a78bfa","#fb923c","#f87171","#fbbf24","#6ee7b7","#93c5fd","#c4b5fd"];
@@ -181,7 +181,7 @@ function CorrelationHeatmap({ assets, corrMatrix }) {
   return (
     <div>
       <div style={{ fontSize: 10, color: "#484f58", marginBottom: 12, letterSpacing: "0.1em" }}>
-        PAIRWISE CORRELATION MATRIX · BASED ON 1-YEAR DAILY LOG RETURNS
+        HOW YOUR ASSETS MOVE TOGETHER · BASED ON 1-YEAR DAILY RETURNS
       </div>
       <div style={{ overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse" }}>
@@ -224,10 +224,8 @@ function CorrelationHeatmap({ assets, corrMatrix }) {
           </tbody>
         </table>
       </div>
-      <div style={{ display: "flex", gap: 24, marginTop: 12, fontSize: 10, color: "#8b949e" }}>
-        <span><span style={{ color: "#f59e0b" }}>■</span> Positive — assets move together</span>
-        <span><span style={{ color: "#f87171" }}>■</span> Negative — assets offset each other</span>
-        <span style={{ color: "#484f58" }}>■ Self (always 1.00)</span>
+      <div style={{ fontSize: 10, color: "#30363d", marginTop: 10, lineHeight: 1.6 }}>
+        Numbers range from −1 to +1. <span style={{ color: "#f59e0b" }}>+1 (amber)</span> means two assets always move in the same direction. <span style={{ color: "#f87171" }}>−1 (red)</span> means they move in opposite directions — great for reducing risk. <span style={{ color: "#484f58" }}>0</span> means they move independently.
       </div>
     </div>
   );
@@ -267,7 +265,7 @@ function EfficientFrontierChart({ frontier, currentSigma, currentMu, currentShar
   return (
     <div>
       <div style={{ fontSize: 10, color: "#484f58", marginBottom: 12, letterSpacing: "0.1em" }}>
-        EFFICIENT FRONTIER · 3,000 RANDOM WEIGHT COMBINATIONS · BASE CASE RETURNS
+        FIND YOUR OPTIMAL PORTFOLIO · 3,000 WEIGHT COMBINATIONS TESTED
       </div>
       <ResponsiveContainer width="100%" height={300}>
         <ScatterChart margin={{ top: 10, right: 30, bottom: 40, left: 20 }}>
@@ -279,9 +277,8 @@ function EfficientFrontierChart({ frontier, currentSigma, currentMu, currentShar
           <Scatter name="Max Sharpe" data={optimalPoint} shape={(p) => <circle cx={p.cx} cy={p.cy} r={8} fill="#34d399" opacity={1} />} />
         </ScatterChart>
       </ResponsiveContainer>
-      <div style={{ display: "flex", gap: 24, fontSize: 10, marginTop: 4, color: "#8b949e" }}>
-        <span><span style={{ color: "#38bdf8" }}>●</span> Current portfolio — Sharpe: {currentSharpe.toFixed(2)}</span>
-        <span><span style={{ color: "#34d399" }}>●</span> Max Sharpe — {maxSharpePoint.sharpe.toFixed(2)}</span>
+      <div style={{ fontSize: 10, color: "#30363d", marginTop: 8, lineHeight: 1.6 }}>
+        Each dot is a different way to split your money. Move right = more risk. Move up = more return. The <span style={{ color: "#34d399" }}>green dot</span> is the mathematically optimal split — the best return for the least risk. The <span style={{ color: "#38bdf8" }}>blue dot</span> is where you are now (Sharpe: {currentSharpe.toFixed(2)}).
       </div>
       <div style={{ marginTop: 14, background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: "12px 16px" }}>
         <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 8 }}>OPTIMAL WEIGHTS (MAX SHARPE RATIO)</div>
@@ -545,10 +542,11 @@ export default function App() {
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 10, color: "#484f58", letterSpacing: "0.12em", marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 10, color: "#484f58", letterSpacing: "0.12em", marginBottom: 4, display: "flex", justifyContent: "space-between" }}>
               <span>PORTFOLIO</span>
               <span style={{ color: totalWeight === 100 ? "#34d399" : "#f59e0b" }}>{totalWeight}% TOTAL</span>
             </div>
+            <div style={{ fontSize: 9, color: "#30363d", marginBottom: 8 }}>Weights don't need to add to 100 — they're automatically normalised.</div>
 
             {fetchingInit && assets.length === 0 && (
               <div style={{ color: "#484f58", fontSize: 11, padding: "12px 0", textAlign: "center" }}>
@@ -598,8 +596,11 @@ export default function App() {
                   onClick={() => setScenario(s)}
                   style={scenario.id === s.id ? { borderColor: s.color, color: s.color, background: `${s.color}11` } : {}}
                 >
-                  <span style={{ marginRight: 8 }}>{s.icon}</span>{s.label}
-                  {s.muShock !== 0 && <span style={{ float: "right", opacity: 0.6, fontSize: 10 }}>{fmt(s.muShock)}</span>}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span><span style={{ marginRight: 8 }}>{s.icon}</span>{s.label}</span>
+                    {s.muShock !== 0 && <span style={{ opacity: 0.6, fontSize: 10 }}>{fmt(s.muShock)}</span>}
+                  </div>
+                  <div style={{ fontSize: 9, color: scenario.id === s.id ? s.color : "#484f58", marginTop: 2, fontWeight: 400 }}>{s.desc}</div>
                 </button>
               ))}
             </div>
@@ -617,18 +618,18 @@ export default function App() {
               {/* Metrics */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 10, marginBottom: 18 }}>
                 {[
-                  { label: "MEDIAN RETURN",    value: fmt(results.median),  color: results.median >= 0 ? "#34d399" : "#f87171", sub: "1-YEAR HORIZON" },
-                  { label: "MEAN RETURN",      value: fmt(results.mean),    color: results.mean   >= 0 ? "#34d399" : "#f87171", sub: "1-YEAR HORIZON" },
-                  { label: "VAR (95%)",        value: fmt(results.var95),   color: "#f87171",  sub: "1-YEAR HORIZON" },
-                  { label: "VAR (99%)",        value: fmt(results.var99),   color: "#ef4444",  sub: "1-YEAR HORIZON" },
-                  { label: "CVAR (95%)",       value: fmt(results.cvar95),  color: "#dc2626",  sub: "EXPECTED SHORTFALL" },
-                  { label: "SHARPE RATIO",     value: results.sharpe.toFixed(2), color: results.sharpe >= 1 ? "#34d399" : results.sharpe >= 0 ? "#f59e0b" : "#f87171", sub: "RF=4.5%" },
-                  { label: "MED MAX DRAWDOWN", value: fmt(-results.medianMaxDrawdown), color: "#f87171", sub: "MEDIAN SIMULATION" },
+                  { label: "MEDIAN RETURN",    value: fmt(results.median),  color: results.median >= 0 ? "#34d399" : "#f87171", desc: "The middle outcome — half your simulations did better than this" },
+                  { label: "MEAN RETURN",      value: fmt(results.mean),    color: results.mean   >= 0 ? "#34d399" : "#f87171", desc: "The average return across all 10,000 simulated years" },
+                  { label: "VAR (95%)",        value: fmt(results.var95),   color: "#f87171",  desc: "Your 1-in-20 bad year — 5% chance of losing at least this much" },
+                  { label: "VAR (99%)",        value: fmt(results.var99),   color: "#ef4444",  desc: "Your 1-in-100 bad year — a rare but severe loss scenario" },
+                  { label: "CVAR (95%)",       value: fmt(results.cvar95),  color: "#dc2626",  desc: "When bad things happen, this is the average loss in the worst 5% of years" },
+                  { label: "SHARPE RATIO",     value: results.sharpe.toFixed(2), color: results.sharpe >= 1 ? "#34d399" : results.sharpe >= 0 ? "#f59e0b" : "#f87171", desc: "Return per unit of risk. Above 1 is good. Negative means the risk isn't worth it" },
+                  { label: "MAX DRAWDOWN",     value: fmt(-results.medianMaxDrawdown), color: "#f87171", desc: "The typical worst peak-to-trough dip during the year before recovering" },
                 ].map(m => (
                   <div key={m.label} className="metric-card">
                     <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 6 }}>{m.label}</div>
                     <div style={{ fontSize: 18, fontWeight: 600, color: m.color, fontFamily: "'IBM Plex Mono'", textShadow: `0 0 20px ${m.color}55` }}>{m.value}</div>
-                    <div style={{ fontSize: 9, color: "#30363d", marginTop: 2 }}>{m.sub}</div>
+                    <div style={{ fontSize: 9, color: "#484f58", marginTop: 4, lineHeight: 1.4 }}>{m.desc}</div>
                   </div>
                 ))}
               </div>
@@ -659,7 +660,8 @@ export default function App() {
 
               {activeTab === "paths" && (
                 <div style={{ height: 300 }}>
-                  <div style={{ fontSize: 10, color: "#484f58", marginBottom: 8 }}>14 RANDOM SIMULATION PATHS · CUMULATIVE RETURN (%)</div>
+                  <div style={{ fontSize: 10, color: "#484f58", marginBottom: 2 }}>14 RANDOM SIMULATION PATHS · CUMULATIVE RETURN (%)</div>
+                  <div style={{ fontSize: 10, color: "#30363d", marginBottom: 8 }}>Each line is one possible future for your portfolio. The spread shows how uncertain outcomes are — wide spread means higher risk.</div>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={pathData}>
                       <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} label={{ value: "TRADING DAYS", position: "insideBottom", offset: -5, fontSize: 10, fill: "#484f58" }} />
@@ -676,7 +678,8 @@ export default function App() {
 
               {activeTab === "distribution" && (
                 <div style={{ height: 300 }}>
-                  <div style={{ fontSize: 10, color: "#484f58", marginBottom: 8 }}>DISTRIBUTION OF 1-YEAR RETURNS · 10,000 SIMULATIONS</div>
+                  <div style={{ fontSize: 10, color: "#484f58", marginBottom: 2 }}>DISTRIBUTION OF 1-YEAR RETURNS · 10,000 SIMULATIONS</div>
+                  <div style={{ fontSize: 10, color: "#30363d", marginBottom: 8 }}>The taller the bar, the more likely that return. The red line marks your VaR — losses to the left of it happen only 5% of the time.</div>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={results.hist} barCategoryGap="0%">
                       <XAxis dataKey="x" tick={{ fontSize: 9, fill: "#484f58" }} axisLine={{ stroke: "#21262d" }} tickLine={false} tickFormatter={v => (v * 100).toFixed(0) + "%"} interval={4} />
@@ -692,7 +695,8 @@ export default function App() {
               {activeTab === "backtest" && (
                 <div>
                   <div style={{ height: 300 }}>
-                    <div style={{ fontSize: 10, color: "#484f58", marginBottom: 8 }}>HISTORICAL PERFORMANCE · PAST 12 MONTHS · CUMULATIVE RETURN (%)</div>
+                    <div style={{ fontSize: 10, color: "#484f58", marginBottom: 2 }}>HISTORICAL PERFORMANCE · PAST 12 MONTHS · CUMULATIVE RETURN (%)</div>
+                    <div style={{ fontSize: 10, color: "#30363d", marginBottom: 8 }}>How your portfolio actually performed over the last year. The gold line is the blended portfolio — coloured lines show each individual asset.</div>
                     {backtestData.length > 0 ? (
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={backtestData}>
@@ -772,30 +776,30 @@ export default function App() {
               {/* Insight strip */}
               <div style={{ marginTop: 18, background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: "14px 18px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16 }}>
                 <div>
-                  <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 4 }}>INTERPRETATION</div>
+                  <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 4 }}>WHAT COULD GO WRONG?</div>
                   <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.5 }}>
                     {results.var95 >= 0
-                      ? <>In a <span style={{ color: scenario.color }}>{scenario.label}</span> scenario, even the worst 5% of outcomes show a gain of at least <span style={{ color: "#34d399", fontWeight: 600 }}>+{(results.var95 * 100).toFixed(1)}%</span> within 1 year.</>
-                      : <>In a <span style={{ color: scenario.color }}>{scenario.label}</span> scenario, there is a 5% chance of losing more than <span style={{ color: "#f87171", fontWeight: 600 }}>{(-results.var95 * 100).toFixed(1)}%</span> within 1 year.</>
+                      ? <>In a <span style={{ color: scenario.color }}>{scenario.label}</span> scenario, you're likely to make money — even the worst 1-in-20 outcomes show a gain of <span style={{ color: "#34d399", fontWeight: 600 }}>+{(results.var95 * 100).toFixed(1)}%</span>.</>
+                      : <>In a <span style={{ color: scenario.color }}>{scenario.label}</span> scenario, there's a 1-in-20 chance of losing more than <span style={{ color: "#f87171", fontWeight: 600 }}>{(-results.var95 * 100).toFixed(1)}%</span> of your portfolio in a year.</>
                     }
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 4 }}>EXPECTED SHORTFALL</div>
+                  <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 4 }}>IF THINGS GET REALLY BAD</div>
                   <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.5 }}>
-                    In the worst 5% of outcomes, the average loss is <span style={{ color: "#ef4444", fontWeight: 600 }}>{(-results.cvar95 * 100).toFixed(1)}%</span>. This is the CVaR (tail risk) measure.
+                    In the worst 5% of years, you'd lose an average of <span style={{ color: "#ef4444", fontWeight: 600 }}>{(-results.cvar95 * 100).toFixed(1)}%</span>. This is your tail risk — the damage when markets truly break down.
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 4 }}>UPSIDE (90TH PCT)</div>
+                  <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 4 }}>BEST CASE UPSIDE</div>
                   <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.5 }}>
-                    Top 10% of outcomes yield <span style={{ color: "#34d399", fontWeight: 600 }}>+{(results.p90 * 100).toFixed(1)}%</span> or better. Median: <span style={{ color: "#34d399", fontWeight: 600 }}>{fmt(results.median)}</span>.
+                    In the best 1-in-10 years, you'd gain <span style={{ color: "#34d399", fontWeight: 600 }}>+{(results.p90 * 100).toFixed(1)}%</span> or more. The most likely outcome (median) is <span style={{ color: "#34d399", fontWeight: 600 }}>{fmt(results.median)}</span>.
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 4 }}>MAX DRAWDOWN</div>
+                  <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 4 }}>STOMACH THE DIP</div>
                   <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.5 }}>
-                    The median simulation experiences a peak-to-trough drawdown of <span style={{ color: "#f87171", fontWeight: 600 }}>{(results.medianMaxDrawdown * 100).toFixed(1)}%</span> over the year.
+                    In a typical year, your portfolio could temporarily drop <span style={{ color: "#f87171", fontWeight: 600 }}>{(results.medianMaxDrawdown * 100).toFixed(1)}%</span> from its peak before recovering. Can you hold through that?
                   </div>
                 </div>
               </div>
