@@ -258,7 +258,7 @@ export default function App() {
 
   const pathData = results?.chartPaths?.[0]?.map((_, i) => {
     const obj = { day: i * 5 };
-    results.chartPaths.forEach((p, pi) => { obj[`p${pi}`] = p[i] ? +(p[i] * 100 - 100).toFixed(2) : 0; });
+    results.chartPaths.forEach((p, pi) => { obj[`p${pi}`] = p[i] !== undefined ? +(p[i] * 100 - 100).toFixed(2) : null; });
     return obj;
   }) || [];
 
@@ -511,7 +511,10 @@ export default function App() {
                 <div>
                   <div style={{ fontSize: 9, color: "#484f58", letterSpacing: "0.1em", marginBottom: 4 }}>INTERPRETATION</div>
                   <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.5 }}>
-                    In a <span style={{ color: scenario.color }}>{scenario.label}</span> scenario, there is a 5% chance of losing more than <span style={{ color: "#f87171", fontWeight: 600 }}>{(-results.var95 * 100).toFixed(1)}%</span> within 1 year.
+                    {results.var95 >= 0
+                      ? <>In a <span style={{ color: scenario.color }}>{scenario.label}</span> scenario, even the worst 5% of outcomes show a gain of at least <span style={{ color: "#34d399", fontWeight: 600 }}>+{(results.var95 * 100).toFixed(1)}%</span> within 1 year.</>
+                      : <>In a <span style={{ color: scenario.color }}>{scenario.label}</span> scenario, there is a 5% chance of losing more than <span style={{ color: "#f87171", fontWeight: 600 }}>{(-results.var95 * 100).toFixed(1)}%</span> within 1 year.</>
+                    }
                   </div>
                 </div>
                 <div>
